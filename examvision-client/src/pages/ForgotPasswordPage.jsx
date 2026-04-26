@@ -8,16 +8,19 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(e) {
     e.preventDefault();
+
     if (!identifier.trim()) {
-      alert("Имэйл/утсаа оруулна уу.");
+      alert("Имэйл эсвэл утсаа оруулна уу.");
       return;
     }
+
     setBusy(true);
+
     try {
       const res = await apiForgotPassword({ identifier: identifier.trim() });
-      alert(res.message || "Request sent (API)");
+      alert(`${res.message}\nDemo OTP: ${res.demo_otp}`);
     } catch (err) {
-      alert(err?.response?.data?.detail || err?.message || "Request failed");
+      alert(err?.response?.data?.detail || "Reset request failed");
     } finally {
       setBusy(false);
     }
@@ -27,21 +30,24 @@ export default function ForgotPasswordPage() {
     <div className="container">
       <div className="card">
         <h1 className="h1">Нууц үг сэргээх</h1>
-        <p className="muted">Sprint 1: API request явж байгааг харуулах.</p>
 
         <form onSubmit={onSubmit}>
           <div className="field">
             <div className="label">Имэйл / Утас</div>
-            <input className="input" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+            <input
+              className="input"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+            />
           </div>
 
           <button className="btn" disabled={busy}>
-            {busy ? "..." : "Хүсэлт илгээх"}
+            {busy ? "..." : "Сэргээх хүсэлт илгээх"}
           </button>
         </form>
 
         <div className="navMini">
-          <Link to="/login">Нэвтрэх рүү буцах</Link>
+          <Link to="/login">Нэвтрэх</Link>
           <Link to="/register">Бүртгүүлэх</Link>
         </div>
       </div>

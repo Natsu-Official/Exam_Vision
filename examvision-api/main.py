@@ -1,16 +1,16 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt, JWTError
 from pydantic import BaseModel
 
-app = FastAPI(title="ExamVision API - Sprint2")
+app = FastAPI(title="ExamVision API - Sprint3/Sprint4")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # sprint/demo дээр түр OK
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,7 +20,6 @@ SECRET_KEY = "examvision_super_secret_key_2026"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-# Demo users (түр зуур DB-ийн оронд)
 fake_users_db = {
     "student@example.com": {
         "id": 1,
@@ -48,6 +47,61 @@ fake_users_db = {
     },
 }
 
+fake_exams_db = {
+    1: {
+        "id": 1,
+        "title": "Web Engineering Midterm",
+        "description": "React, API, Authentication суурь ойлголтын шалгалт",
+        "duration_minutes": 10,
+        "status": "published",
+        "questions": [
+            {
+                "id": 1,
+                "text": "React нь ямар төрлийн library вэ?",
+                "type": "single",
+                "points": 2,
+                "options": [
+                    {"id": "a", "text": "Database library"},
+                    {"id": "b", "text": "UI library"},
+                    {"id": "c", "text": "Operating system"},
+                    {"id": "d", "text": "Network protocol"},
+                ],
+                "correct_answer": "b",
+            },
+            {
+                "id": 2,
+                "text": "JWT юунд ашиглагддаг вэ?",
+                "type": "single",
+                "points": 2,
+                "options": [
+                    {"id": "a", "text": "Authentication token"},
+                    {"id": "b", "text": "CSS framework"},
+                    {"id": "c", "text": "Database engine"},
+                    {"id": "d", "text": "Image format"},
+                ],
+                "correct_answer": "a",
+            },
+            {
+                "id": 3,
+                "text": "FastAPI ямар програмчлалын хэл дээр суурилдаг вэ?",
+                "type": "single",
+                "points": 2,
+                "options": [
+                    {"id": "a", "text": "Java"},
+                    {"id": "b", "text": "Python"},
+                    {"id": "c", "text": "PHP"},
+                    {"id": "d", "text": "C#"},
+                ],
+                "correct_answer": "b",
+            },
+        ],
+    }
+}
+
+fake_attempts_db = {}
+fake_monitoring_logs = []
+fake_exam_results = []
+
 
 class RegisterReq(BaseModel):
     first_name: str
@@ -64,15 +118,32 @@ class LoginReq(BaseModel):
 
 class ForgotReq(BaseModel):
     identifier: str
-    
+
 
 class FaceVerifyReq(BaseModel):
     image: str
 
 
+class StartExamReq(BaseModel):
+    exam_id: int
+
+
+class SubmitExamReq(BaseModel):
+    exam_id: int
+    answers: Dict[str, str]
+
+
+class MonitoringLogReq(BaseModel):
+    exam_id: int
+    event_type: str
+    details: Dict[str, Any] = {}
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.utcnow() + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -102,6 +173,14 @@ def get_current_user(token: str = Depends(get_token_from_header)):
         raise HTTPException(status_code=401, detail="Хэрэглэгч олдсонгүй.")
 
     return user
+
+
+def calculate_risk_level(violation_count: int):
+    if violation_count >= 5:
+        return "High"
+    if violation_count >= 3:
+        return "Medium"
+    return "Low"
 
 
 @app.get("/api/health")
@@ -170,7 +249,7 @@ def login(req: LoginReq):
 
 @app.post("/api/auth/forgot-password")
 def forgot(req: ForgotReq):
-    otp = "123456"  # Sprint2 demo OTP
+    otp = "123456"
     print(f"[DEMO OTP] {req.identifier} -> {otp}")
     return {
         "message": f"Reset request received for {req.identifier}",
@@ -186,6 +265,18 @@ def me(current_user: dict = Depends(get_current_user)):
         "first_name": current_user["first_name"],
         "last_name": current_user["last_name"],
         "role": current_user["role"],
+    }
+
+
+@app.post("/api/auth/verify-face")
+def verify_face(req: FaceVerifyReq, current_user: dict = Depends(get_current_user)):
+    if not req.image:
+        raise HTTPException(status_code=400, detail="Image data байхгүй байна.")
+
+    return {
+        "verified": True,
+        "message": f"{current_user['first_name']} хэрэглэгчийн face verification demo амжилттай.",
+        "confidence": 0.93,
     }
 
 
@@ -210,13 +301,169 @@ def admin_dashboard(current_user: dict = Depends(get_current_user)):
     return {"message": "Admin dashboard data"}
 
 
-@app.post("/api/auth/verify-face")
-def verify_face(req: FaceVerifyReq, current_user: dict = Depends(get_current_user)):
-    if not req.image:
-        raise HTTPException(status_code=400, detail="Image data байхгүй байна.")
+@app.get("/api/exams")
+def list_exams(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "student":
+        raise HTTPException(status_code=403, detail="Зөвхөн student exam list харна.")
 
     return {
-        "verified": True,
-        "message": f"{current_user['first_name']} хэрэглэгчийн face verification demo амжилттай.",
-        "confidence": 0.93,
+        "exams": [
+            {
+                "id": exam["id"],
+                "title": exam["title"],
+                "description": exam["description"],
+                "duration_minutes": exam["duration_minutes"],
+                "status": exam["status"],
+            }
+            for exam in fake_exams_db.values()
+        ]
     }
+
+
+@app.post("/api/exams/start")
+def start_exam(req: StartExamReq, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "student":
+        raise HTTPException(status_code=403, detail="Зөвхөн student шалгалт эхлүүлнэ.")
+
+    exam = fake_exams_db.get(req.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Шалгалт олдсонгүй.")
+
+    attempt_id = len(fake_attempts_db) + 1
+    fake_attempts_db[attempt_id] = {
+        "id": attempt_id,
+        "exam_id": req.exam_id,
+        "student_id": current_user["id"],
+        "started_at": datetime.utcnow().isoformat(),
+        "status": "in_progress",
+    }
+
+    safe_questions = []
+    for q in exam["questions"]:
+        safe_questions.append(
+            {
+                "id": q["id"],
+                "text": q["text"],
+                "type": q["type"],
+                "points": q["points"],
+                "options": q["options"],
+            }
+        )
+
+    return {
+        "attempt_id": attempt_id,
+        "exam": {
+            "id": exam["id"],
+            "title": exam["title"],
+            "description": exam["description"],
+            "duration_minutes": exam["duration_minutes"],
+            "questions": safe_questions,
+        },
+    }
+
+
+@app.post("/api/exams/submit")
+def submit_exam(req: SubmitExamReq, current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "student":
+        raise HTTPException(status_code=403, detail="Зөвхөн student submit хийнэ.")
+
+    exam = fake_exams_db.get(req.exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Шалгалт олдсонгүй.")
+
+    total_score = 0
+    earned_score = 0
+    result_details = []
+
+    for q in exam["questions"]:
+        total_score += q["points"]
+        student_answer = req.answers.get(str(q["id"]))
+        is_correct = student_answer == q["correct_answer"]
+
+        if is_correct:
+            earned_score += q["points"]
+
+        result_details.append(
+            {
+                "question_id": q["id"],
+                "student_answer": student_answer,
+                "correct_answer": q["correct_answer"],
+                "is_correct": is_correct,
+                "points": q["points"] if is_correct else 0,
+            }
+        )
+
+    related_logs = [
+        log
+        for log in fake_monitoring_logs
+        if log["student_id"] == current_user["id"] and log["exam_id"] == req.exam_id
+    ]
+
+    violation_types = [
+        "tab_switch",
+        "fullscreen_exit",
+        "copy_attempt",
+        "paste_attempt",
+        "right_click",
+    ]
+
+    violation_count = len(
+        [log for log in related_logs if log["event_type"] in violation_types]
+    )
+    risk_level = calculate_risk_level(violation_count)
+
+    percentage = round((earned_score / total_score) * 100, 2)
+
+    result_record = {
+        "id": len(fake_exam_results) + 1,
+        "exam_id": req.exam_id,
+        "exam_title": exam["title"],
+        "student_id": current_user["id"],
+        "student_name": f"{current_user['first_name']} {current_user['last_name']}",
+        "earned_score": earned_score,
+        "total_score": total_score,
+        "percentage": percentage,
+        "violation_count": violation_count,
+        "risk_level": risk_level,
+        "submitted_at": datetime.utcnow().isoformat(),
+    }
+
+    fake_exam_results.append(result_record)
+
+    return {
+        "message": "Exam submitted successfully",
+        "total_score": total_score,
+        "earned_score": earned_score,
+        "percentage": percentage,
+        "details": result_details,
+        "monitoring_events": related_logs,
+        "risk_level": risk_level,
+        "violation_count": violation_count,
+    }
+
+
+@app.post("/api/monitoring/log-event")
+def log_monitoring_event(req: MonitoringLogReq, current_user: dict = Depends(get_current_user)):
+    log = {
+        "id": len(fake_monitoring_logs) + 1,
+        "student_id": current_user["id"],
+        "exam_id": req.exam_id,
+        "event_type": req.event_type,
+        "details": req.details,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    fake_monitoring_logs.append(log)
+
+    return {
+        "message": "Monitoring event logged",
+        "log": log,
+    }
+
+
+@app.get("/api/teacher/exam-results")
+def teacher_exam_results(current_user: dict = Depends(get_current_user)):
+    if current_user["role"] != "teacher":
+        raise HTTPException(status_code=403, detail="Teacher эрх шаардлагатай.")
+
+    return {"results": fake_exam_results}

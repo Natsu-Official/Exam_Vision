@@ -11,15 +11,25 @@
 }
 
 *{ box-sizing:border-box; }
-html,body{ height:100%; margin:0; padding:0; }
+
+html,body{
+  height:100%;
+  margin:0;
+  padding:0;
+}
+
 body{
   background: var(--ev-bg);
   color: var(--ev-fg);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
 
-a{ color: inherit; text-decoration: none; }
-button, input{
+a{
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input, select{
   font: inherit;
 }
 
@@ -41,14 +51,37 @@ button, input{
   padding: 20px;
 }
 
-.h1{ font-size: 22px; margin: 0 0 14px; }
-.muted{ opacity: 0.8; font-size: 14px; }
+.h1{
+  font-size: 22px;
+  margin: 0 0 14px;
+}
 
-.row{ display:flex; gap: 10px; }
-.row > * { flex:1; }
+.muted{
+  opacity: 0.8;
+  font-size: 14px;
+}
 
-.field{ display:flex; flex-direction:column; gap:6px; margin: 12px 0; }
-.label{ font-size: 13px; opacity: 0.9; }
+.row{
+  display:flex;
+  gap: 10px;
+}
+
+.row > *{
+  flex:1;
+}
+
+.field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin: 12px 0;
+}
+
+.label{
+  font-size: 13px;
+  opacity: 0.9;
+}
+
 .input{
   background: rgba(0,0,0,0.25);
   border: 1px solid var(--ev-border);
@@ -57,7 +90,10 @@ button, input{
   color: var(--ev-fg);
   outline: none;
 }
-.input:focus{ border-color: var(--ev-accent); }
+
+.input:focus{
+  border-color: var(--ev-accent);
+}
 
 .btn{
   width: 100%;
@@ -70,7 +106,11 @@ button, input{
   font-weight: 700;
   margin-top: 10px;
 }
-.btn:disabled{ opacity: 0.6; cursor: not-allowed; }
+
+.btn:disabled{
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 .btnSecondary{
   width: 100%;
@@ -101,7 +141,10 @@ button, input{
   background: rgba(0,0,0,0.18);
   font-size: 13px;
 }
-.danger{ color: var(--ev-danger); }
+
+.danger{
+  color: var(--ev-danger);
+}
 
 .dashboard-shell {
   min-height: 100vh;
@@ -322,6 +365,32 @@ button, input{
   border-radius: 14px;
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--ev-border);
+}
+
+.risk-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.risk-low {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.risk-medium {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.risk-high {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 @media (max-width: 1100px) {

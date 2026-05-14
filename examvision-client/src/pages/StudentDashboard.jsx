@@ -51,9 +51,14 @@ export default function StudentDashboard() {
         </div>
 
         <div className="dashboard-top-actions">
+          <button className="btnSecondary" onClick={() => navigate("/exams")}>
+            Шалгалт өгөх
+          </button>
+
           <button className="btnSecondary" onClick={() => navigate("/settings")}>
             Theme
           </button>
+
           <button className="btn" onClick={logout}>
             Logout
           </button>

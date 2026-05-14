@@ -7,12 +7,15 @@ import SettingsPage from "./pages/SettingsPage.jsx";
 import StudentDashboard from "./pages/StudentDashboard.jsx";
 import TeacherDashboard from "./pages/TeacherDashboard.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
+import ExamListPage from "./pages/ExamListPage.jsx";
+import ExamTakingPage from "./pages/ExamTakingPage.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
+
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -45,7 +48,32 @@ export default function App() {
         }
       />
 
-      <Route path="*" element={<div className="container"><div className="card">404</div></div>} />
+      <Route
+        path="/exams"
+        element={
+          <ProtectedRoute allowedRoles={["student"]}>
+            <ExamListPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/exam/:examId"
+        element={
+          <ProtectedRoute allowedRoles={["student"]}>
+            <ExamTakingPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="*"
+        element={
+          <div className="container">
+            <div className="card">404</div>
+          </div>
+        }
+      />
     </Routes>
   );
 }

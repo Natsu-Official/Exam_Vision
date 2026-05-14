@@ -1,14 +1,19 @@
 import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+
 import LoginPage from "./pages/LoginPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
+
 import StudentDashboard from "./pages/StudentDashboard.jsx";
 import TeacherDashboard from "./pages/TeacherDashboard.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
+
 import ExamListPage from "./pages/ExamListPage.jsx";
 import ExamTakingPage from "./pages/ExamTakingPage.jsx";
+import TeacherReportsPage from "./pages/TeacherReportsPage.jsx";
+
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 export default function App() {
@@ -67,10 +72,19 @@ export default function App() {
       />
 
       <Route
+        path="/teacher/reports"
+        element={
+          <ProtectedRoute allowedRoles={["teacher", "admin"]}>
+            <TeacherReportsPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="*"
         element={
           <div className="container">
-            <div className="card">404</div>
+            <div className="card">404 - Page not found</div>
           </div>
         }
       />

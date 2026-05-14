@@ -1,59 +1,53 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Webcam from "react-webcam";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiLogMonitoringEvent, apiStartExam, apiSubmitExam } from "../services/exam";
+
+import {
+  apiLogMonitoringEvent,
+  apiStartExam,
+  apiSubmitExam,
+} from "../services/exam";
+
+import { apiDetectObject } from "../services/ai";
 
 function formatTime(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+  const safeSeconds = Math.max(0, seconds || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainSeconds = safeSeconds % 60;
 
-function getRiskLevel(count) {
-  if (count >= 5) return "High";
-  if (count >= 3) return "Medium";
-  return "Low";
+  return `${String(minutes).padStart(2, "0")}:${String(remainSeconds).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 export default function ExamTakingPage() {
   const { examId } = useParams();
   const navigate = useNavigate();
-  const webcamRef = useRef(null);
+
+  const examIdNumber = useMemo(() => Number(examId), [examId]);
 
   const [exam, setExam] = useState(null);
   const [attemptId, setAttemptId] = useState(null);
   const [answers, setAnswers] = useState({});
   const [timeLeft, setTimeLeft] = useState(null);
-  const [result, setResult] = useState(null);
   const [events, setEvents] = useState([]);
-  const [cameraStatus, setCameraStatus] = useState("checking");
-  const [faceStatus, setFaceStatus] = useState("waiting");
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
   const submittedRef = useRef(false);
-
-  const examIdNumber = useMemo(() => Number(examId), [examId]);
-
-  const violationTypes = [
-    "tab_switch",
-    "fullscreen_exit",
-    "copy_attempt",
-    "paste_attempt",
-    "right_click",
-    "camera_denied",
-    "face_missing_demo",
-  ];
-
-  const violationCount = events.filter((e) =>
-    violationTypes.includes(e.event_type)
-  ).length;
+  const startingRef = useRef(false);
 
   async function logEvent(eventType, details = {}) {
-    const newEvent = {
+    if (submittedRef.current) return;
+
+    const localEvent = {
       event_type: eventType,
       details,
       time: new Date().toLocaleTimeString(),
     };
 
-    setEvents((prev) => [...prev, newEvent]);
+    setEvents((prev) => [...prev, localEvent]);
 
     try {
       await apiLogMonitoringEvent({
@@ -62,13 +56,40 @@ export default function ExamTakingPage() {
         details,
       });
     } catch {
-      // demo үед log fail болсон ч exam зогсоохгүй
+      // Monitoring log алдаа гарсан ч шалгалтыг зогсоохгүй.
+    }
+  }
+
+  async function runAIDemo(demoObject) {
+    if (submittedRef.current) return;
+
+    try {
+      const res = await apiDetectObject({
+        exam_id: examIdNumber,
+        demo_object: demoObject,
+        image: null,
+      });
+
+      setEvents((prev) => [
+        ...prev,
+        {
+          event_type: res.event_type,
+          details: { object: demoObject, risk_level: res.risk_level },
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
+
+      alert(`${res.message}\nRisk: ${res.risk_level}`);
+    } catch (err) {
+      alert(err?.response?.data?.detail || "AI detection failed");
     }
   }
 
   async function submitExam(auto = false) {
     if (submittedRef.current) return;
+
     submittedRef.current = true;
+    setSubmitting(true);
 
     try {
       const res = await apiSubmitExam({
@@ -79,44 +100,70 @@ export default function ExamTakingPage() {
       setResult({
         ...res,
         auto,
-        local_events: events,
       });
 
       if (document.fullscreenElement) {
-        await document.exitFullscreen();
+        try {
+          await document.exitFullscreen();
+        } catch {
+          // Fullscreen exit fail бол demo flow-г зогсоохгүй.
+        }
       }
     } catch (err) {
-      alert(err?.response?.data?.detail || "Submit хийхэд алдаа гарлаа.");
       submittedRef.current = false;
+      alert(err?.response?.data?.detail || "Submit хийхэд алдаа гарлаа.");
+    } finally {
+      setSubmitting(false);
     }
   }
 
+  function selectAnswer(questionId, answerId) {
+    setAnswers((prev) => ({
+      ...prev,
+      [String(questionId)]: answerId,
+    }));
+  }
+
   useEffect(() => {
-    async function start() {
+    async function startExam() {
+      if (startingRef.current) return;
+      startingRef.current = true;
+
       try {
+        setBusy(true);
+
         const res = await apiStartExam(examIdNumber);
+
         setExam(res.exam);
         setAttemptId(res.attempt_id);
         setTimeLeft(res.exam.duration_minutes * 60);
 
         try {
           await document.documentElement.requestFullscreen();
-          await logEvent("fullscreen_enter", { attempt_id: res.attempt_id });
+          await logEvent("fullscreen_enter", {
+            attempt_id: res.attempt_id,
+            message: "Exam started in fullscreen mode",
+          });
         } catch {
-          await logEvent("fullscreen_denied", { attempt_id: res.attempt_id });
+          await logEvent("fullscreen_denied", {
+            attempt_id: res.attempt_id,
+            message: "Browser denied fullscreen request",
+          });
         }
       } catch (err) {
         alert(err?.response?.data?.detail || "Шалгалт эхлүүлэхэд алдаа гарлаа.");
         navigate("/exams");
+      } finally {
+        setBusy(false);
       }
     }
 
-    start();
+    startExam();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examIdNumber]);
 
   useEffect(() => {
-    if (timeLeft === null || result) return;
+    if (timeLeft === null || result || submittedRef.current) return;
 
     if (timeLeft <= 0) {
       submitExam(true);
@@ -124,23 +171,15 @@ export default function ExamTakingPage() {
     }
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
+      setTimeLeft((prev) => {
+        if (prev === null) return prev;
+        return prev - 1;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, result]);
-
-  useEffect(() => {
-    if (violationCount >= 5 && !submittedRef.current && !result) {
-      logEvent("auto_submit_triggered", {
-        reason: "Violation limit reached",
-        violation_count: violationCount,
-      });
-      submitExam(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [violationCount]);
 
   useEffect(() => {
     function onVisibilityChange() {
@@ -159,29 +198,29 @@ export default function ExamTakingPage() {
       }
     }
 
-    function onCopy(e) {
+    function onCopy(event) {
       if (!submittedRef.current) {
-        e.preventDefault();
+        event.preventDefault();
         logEvent("copy_attempt", {
-          message: "User tried to copy exam content",
+          message: "User attempted to copy content during exam",
         });
       }
     }
 
-    function onPaste(e) {
+    function onPaste(event) {
       if (!submittedRef.current) {
-        e.preventDefault();
+        event.preventDefault();
         logEvent("paste_attempt", {
-          message: "User tried to paste content",
+          message: "User attempted to paste content during exam",
         });
       }
     }
 
-    function onContextMenu(e) {
+    function onContextMenu(event) {
       if (!submittedRef.current) {
-        e.preventDefault();
+        event.preventDefault();
         logEvent("right_click", {
-          message: "User tried to open context menu",
+          message: "User attempted to open context menu during exam",
         });
       }
     }
@@ -202,68 +241,15 @@ export default function ExamTakingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examIdNumber]);
 
-  useEffect(() => {
-    if (!exam || result) return;
-
-    async function checkCameraPermission() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach((track) => track.stop());
-        setCameraStatus("active");
-        setFaceStatus("demo_verified");
-
-        await logEvent("camera_enabled", {
-          message: "Camera permission granted",
-        });
-      } catch {
-        setCameraStatus("denied");
-        setFaceStatus("missing");
-
-        await logEvent("camera_denied", {
-          message: "Camera permission denied",
-        });
-      }
-    }
-
-    checkCameraPermission();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exam, result]);
-
-  useEffect(() => {
-    if (!exam || result || cameraStatus !== "active") return;
-
-    const faceInterval = setInterval(async () => {
-      const screenshot = webcamRef.current?.getScreenshot();
-
-      if (!screenshot) {
-        setFaceStatus("missing");
-        await logEvent("face_missing_demo", {
-          message: "No webcam screenshot captured",
-        });
-        return;
-      }
-
-      setFaceStatus("demo_verified");
-      await logEvent("face_check_demo", {
-        message: "Face check demo passed",
-        confidence: 0.93,
-      });
-    }, 30000);
-
-    return () => clearInterval(faceInterval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exam, result, cameraStatus]);
+  if (busy) {
+    return (
+      <div className="container">
+        <div className="card">Шалгалт ачааллаж байна...</div>
+      </div>
+    );
+  }
 
   if (result) {
-    const monitoringEvents = result.monitoring_events || result.local_events || [];
-    const riskyEvents = monitoringEvents.filter((e) =>
-      violationTypes.includes(e.event_type)
-    );
-
-    const faceEvents = monitoringEvents.filter((e) =>
-      ["camera_enabled", "camera_denied", "face_check_demo", "face_missing_demo"].includes(e.event_type)
-    );
-
     return (
       <div className="dashboard-shell">
         <div className="dashboard-topbar">
@@ -272,7 +258,7 @@ export default function ExamTakingPage() {
             <h1 className="dashboard-title">Шалгалт илгээгдлээ</h1>
             <p className="dashboard-subtitle">
               {result.auto
-                ? "Системийн дүрэм эсвэл хугацааны улмаас автоматаар илгээгдсэн."
+                ? "Цаг дууссан тул шалгалт автоматаар илгээгдсэн."
                 : "Та шалгалтаа амжилттай илгээлээ."}
             </p>
           </div>
@@ -282,53 +268,97 @@ export default function ExamTakingPage() {
           </button>
         </div>
 
-        <section className="dashboard-panel">
-          <div className="panel-head">
-            <h2>Онооны үр дүн</h2>
-            <span>Auto grading</span>
+        <div className="dashboard-stats-grid">
+          <div className="dashboard-stat-card">
+            <p className="stat-label">Нийт оноо</p>
+            <h3 className="stat-value">{result.total_score}</h3>
           </div>
 
-          <div className="mini-grid">
-            <div className="mini-box">Нийт оноо: {result.total_score}</div>
-            <div className="mini-box">Авсан оноо: {result.earned_score}</div>
-            <div className="mini-box">Хувь: {result.percentage}%</div>
-            <div className="mini-box">Submit төрөл: {result.auto ? "Auto" : "Manual"}</div>
-          </div>
-        </section>
-
-        <section className="dashboard-panel" style={{ marginTop: 20 }}>
-          <div className="panel-head">
-            <h2>Monitoring report</h2>
-            <span>AI proctoring demo</span>
+          <div className="dashboard-stat-card">
+            <p className="stat-label">Авсан оноо</p>
+            <h3 className="stat-value">{result.earned_score}</h3>
           </div>
 
-          <div className="mini-grid">
-            <div className="mini-box">Total events: {monitoringEvents.length}</div>
-            <div className="mini-box">Violations: {riskyEvents.length}</div>
-            <div className="mini-box">Risk level: {getRiskLevel(riskyEvents.length)}</div>
-            <div className="mini-box">Face/Camera events: {faceEvents.length}</div>
+          <div className="dashboard-stat-card">
+            <p className="stat-label">Хувь</p>
+            <h3 className="stat-value">{result.percentage}%</h3>
           </div>
 
-          <div className="simple-list" style={{ marginTop: 16 }}>
-            {monitoringEvents.length === 0 && (
-              <div className="simple-list-item">Monitoring event бүртгэгдээгүй.</div>
-            )}
+          <div className="dashboard-stat-card">
+            <p className="stat-label">Risk level</p>
+            <h3 className="stat-value">
+              {result.monitoring_report?.risk_level || "low"}
+            </h3>
+          </div>
+        </div>
 
-            {monitoringEvents.map((event, idx) => (
-              <div className="simple-list-item" key={`${event.event_type}-${idx}`}>
-                {event.event_type} — {event.created_at || event.time || "runtime"}
+        <div className="dashboard-main-grid">
+          <section className="dashboard-panel">
+            <div className="panel-head">
+              <h2>Хариултын үр дүн</h2>
+              <span>Score detail</span>
+            </div>
+
+            <div className="simple-list">
+              {(result.details || []).map((item) => (
+                <div className="simple-list-item" key={item.question_id}>
+                  <strong>Question #{item.question_id}</strong>
+                  <br />
+                  Таны хариулт: {item.student_answer || "Хариулаагүй"}
+                  <br />
+                  Зөв хариулт: {item.correct_answer}
+                  <br />
+                  Төлөв: {item.is_correct ? "Зөв" : "Буруу"}
+                  <br />
+                  Оноо: {item.points}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="dashboard-panel">
+            <div className="panel-head">
+              <h2>Monitoring report</h2>
+              <span>AI + Anti-cheat</span>
+            </div>
+
+            <div className="mini-grid">
+              <div className="mini-box">
+                Risk: {result.monitoring_report?.risk_level || "low"}
               </div>
-            ))}
-          </div>
-        </section>
+              <div className="mini-box">
+                Tab switch: {result.monitoring_report?.tab_switch_count || 0}
+              </div>
+              <div className="mini-box">
+                Fullscreen exit:{" "}
+                {result.monitoring_report?.fullscreen_exit_count || 0}
+              </div>
+              <div className="mini-box">
+                Phone: {result.monitoring_report?.phone_detected_count || 0}
+              </div>
+              <div className="mini-box">
+                Person: {result.monitoring_report?.person_detected_count || 0}
+              </div>
+              <div className="mini-box">
+                Book: {result.monitoring_report?.book_detected_count || 0}
+              </div>
+              <div className="mini-box">
+                Laptop: {result.monitoring_report?.laptop_detected_count || 0}
+              </div>
+              <div className="mini-box">
+                Total events: {result.monitoring_events?.length || 0}
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     );
   }
 
-  if (!exam || timeLeft === null) {
+  if (!exam) {
     return (
       <div className="container">
-        <div className="card">Шалгалт ачааллаж байна...</div>
+        <div className="card">Шалгалт олдсонгүй.</div>
       </div>
     );
   }
@@ -337,142 +367,144 @@ export default function ExamTakingPage() {
     <div className="dashboard-shell">
       <div className="dashboard-topbar">
         <div>
-          <p className="dashboard-role">Attempt #{attemptId}</p>
+          <p className="dashboard-role">Exam Taking</p>
           <h1 className="dashboard-title">{exam.title}</h1>
           <p className="dashboard-subtitle">{exam.description}</p>
         </div>
 
         <div className="dashboard-top-actions">
-          <div className="dashboard-stat-card" style={{ minWidth: 150 }}>
-            <p className="stat-label">Үлдсэн хугацаа</p>
-            <h3 className="stat-value">{formatTime(timeLeft)}</h3>
-          </div>
-
-          <div className="dashboard-stat-card" style={{ minWidth: 150 }}>
-            <p className="stat-label">Violation</p>
-            <h3 className="stat-value">{violationCount}/5</h3>
-          </div>
-
-          <button className="btn" onClick={() => submitExam(false)}>
-            Submit
+          <span className="status-pill">Attempt #{attemptId}</span>
+          <span className="status-pill">Timer: {formatTime(timeLeft)}</span>
+          <button
+            className="btn"
+            disabled={submitting}
+            onClick={() => submitExam(false)}
+          >
+            {submitting ? "Илгээж байна..." : "Submit"}
           </button>
         </div>
       </div>
 
       <div className="dashboard-main-grid">
         <div className="dashboard-left-column">
-          {exam.questions.map((q, index) => (
-            <section className="dashboard-panel" key={q.id}>
-              <div className="panel-head">
-                <h2>
-                  {index + 1}. {q.text}
-                </h2>
-                <span>{q.points} оноо</span>
-              </div>
+          <section className="dashboard-panel">
+            <div className="panel-head">
+              <h2>Асуултууд</h2>
+              <span>{exam.questions?.length || 0} questions</span>
+            </div>
 
-              <div className="simple-list">
-                {q.options.map((option) => (
-                  <label className="simple-list-item" key={option.id}>
-                    <input
-                      type="radio"
-                      name={`question-${q.id}`}
-                      value={option.id}
-                      checked={answers[String(q.id)] === option.id}
-                      onChange={() =>
-                        setAnswers((prev) => ({
-                          ...prev,
-                          [String(q.id)]: option.id,
-                        }))
-                      }
-                      style={{ marginRight: 10 }}
-                    />
-                    {option.text}
-                  </label>
-                ))}
-              </div>
-            </section>
-          ))}
+            <div className="simple-list">
+              {(exam.questions || []).map((question, index) => (
+                <div className="simple-list-item" key={question.id}>
+                  <p style={{ marginTop: 0 }}>
+                    <strong>
+                      {index + 1}. {question.text}
+                    </strong>
+                  </p>
+
+                  <div className="simple-list">
+                    {(question.options || []).map((option) => (
+                      <label
+                        key={option.id}
+                        className="simple-list-item"
+                        style={{ cursor: "pointer" }}
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${question.id}`}
+                          checked={answers[String(question.id)] === option.id}
+                          onChange={() => selectAnswer(question.id, option.id)}
+                          style={{ marginRight: 8 }}
+                        />
+                        <strong>{option.id.toUpperCase()}.</strong> {option.text}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
 
         <div className="dashboard-right-column">
           <section className="dashboard-panel">
             <div className="panel-head">
-              <h2>Camera Monitoring</h2>
-              <span>Sprint 4</span>
-            </div>
-
-            <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 14 }}>
-              {cameraStatus === "active" ? (
-                <Webcam
-                  ref={webcamRef}
-                  screenshotFormat="image/jpeg"
-                  videoConstraints={{ facingMode: "user" }}
-                  style={{
-                    width: "100%",
-                    borderRadius: 16,
-                    border: "1px solid var(--ev-border)",
-                  }}
-                />
-              ) : (
-                <div className="mini-box">
-                  Camera status: {cameraStatus}
-                </div>
-              )}
+              <h2>Exam Monitoring</h2>
+              <span>Active</span>
             </div>
 
             <div className="mini-grid">
-              <div className="mini-box">Camera: {cameraStatus}</div>
-              <div className="mini-box">Face: {faceStatus}</div>
-              <div className="mini-box">Check interval: 30s</div>
-              <div className="mini-box">Mode: Demo AI</div>
+              <div className="mini-box">Fullscreen: Required</div>
+              <div className="mini-box">Tab switch: Tracking</div>
+              <div className="mini-box">Copy/Paste: Blocked</div>
+              <div className="mini-box">Right click: Blocked</div>
             </div>
           </section>
 
           <section className="dashboard-panel">
             <div className="panel-head">
-              <h2>Monitoring</h2>
-              <span>Live</span>
+              <h2>AI Object Detection</h2>
+              <span>Demo</span>
             </div>
 
-            <div className="simple-list">
-              <div className="simple-list-item">Fullscreen: required</div>
-              <div className="simple-list-item">Tab switch: detecting</div>
-              <div className="simple-list-item">Copy/Paste: blocked</div>
-              <div className="simple-list-item">Right click: blocked</div>
-              <div className="simple-list-item">Face monitoring: active demo</div>
+            <p className="dashboard-subtitle">
+              Шалгалтын үед гар утас, өөр хүн, ном, laptop илэрсэн эсэхийг demo
+              байдлаар бүртгэнэ.
+            </p>
+
+            <div className="mini-grid" style={{ marginTop: 16 }}>
+              <button
+                className="btnSecondary"
+                onClick={() => runAIDemo("phone")}
+              >
+                Detect Phone
+              </button>
+
+              <button
+                className="btnSecondary"
+                onClick={() => runAIDemo("person")}
+              >
+                Detect Person
+              </button>
+
+              <button className="btnSecondary" onClick={() => runAIDemo("book")}>
+                Detect Book
+              </button>
+
+              <button
+                className="btnSecondary"
+                onClick={() => runAIDemo("laptop")}
+              >
+                Detect Laptop
+              </button>
             </div>
           </section>
 
           <section className="dashboard-panel">
             <div className="panel-head">
-              <h2>Detected events</h2>
-              <span>{events.length}</span>
+              <h2>Live events</h2>
+              <span>{events.length} events</span>
             </div>
 
-            <div className="simple-list">
-              {events.length === 0 && (
-                <div className="simple-list-item">Одоогоор event илрээгүй.</div>
-              )}
-
-              {events.map((event, idx) => (
-                <div className="simple-list-item" key={`${event.event_type}-${idx}`}>
-                  {event.time} — {event.event_type}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="dashboard-panel">
-            <div className="panel-head">
-              <h2>Risk status</h2>
-              <span>{getRiskLevel(violationCount)}</span>
-            </div>
-
-            <div className="mini-box">
-              {violationCount >= 5
-                ? "High risk: auto submit хийгдэнэ."
-                : "Шалгалтын явц хэвийн байна."}
-            </div>
+            {events.length === 0 ? (
+              <div className="simple-list-item">Одоогоор event бүртгэгдээгүй.</div>
+            ) : (
+              <div className="simple-list">
+                {events
+                  .slice()
+                  .reverse()
+                  .map((event, index) => (
+                    <div
+                      className="simple-list-item"
+                      key={`${event.event_type}-${index}`}
+                    >
+                      <strong>{event.event_type}</strong>
+                      <br />
+                      Time: {event.time}
+                    </div>
+                  ))}
+              </div>
+            )}
           </section>
         </div>
       </div>

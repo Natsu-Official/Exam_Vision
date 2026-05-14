@@ -19,22 +19,22 @@ export default function StudentDashboard() {
   ];
 
   const upcomingExams = [
-    { subject: "Web Engineering", date: "2026-03-29", status: "48 цаг үлдсэн" },
+    { subject: "Web Engineering Midterm", date: "2026-03-29", status: "Бэлэн" },
     { subject: "Computer Networks", date: "2026-04-01", status: "Бэлтгэх" },
     { subject: "Algorithms", date: "2026-04-04", status: "Төлөвлөгдсөн" },
   ];
 
   const notifications = [
-    "Software Engineering хичээлийн даалгаврын хугацаа маргааш дуусна.",
-    "Web Engineering шалгалтын browser test хийх шаардлагатай.",
-    "AI Fundamentals хичээлийн ирц шинэчлэгдсэн.",
+    "Web Engineering Midterm шалгалт өгөх боломжтой болсон.",
+    "Шалгалт эхлэхээс өмнө face verification хийх шаардлагатай.",
+    "AI monitoring demo нь phone/person/book/laptop event бүртгэнэ.",
   ];
 
   const tasks = [
     "Камер, микрофон access шалгах",
-    "Шалгалтын browser lock test хийх",
-    "Ирэх шалгалтын хуваарь баталгаажуулах",
-    "Даалгаврын submission-ээ шалгах",
+    "Face verification хийх",
+    "Шалгалтын browser fullscreen горим шалгах",
+    "Шалгалтын үед tab солихгүй байх",
   ];
 
   return (
@@ -46,12 +46,13 @@ export default function StudentDashboard() {
             Сайн байна уу, {user?.first_name || "Student"} 👋
           </h1>
           <p className="dashboard-subtitle">
-            Таны хичээл, шалгалт, мэдэгдэл, шалгалтын бэлтгэлийг нэг дэлгэц дээр харуулж байна.
+            Таны хичээл, шалгалт, мэдэгдэл, face verification болон шалгалтын
+            бэлтгэлийг нэг дэлгэц дээр харуулж байна.
           </p>
         </div>
 
         <div className="dashboard-top-actions">
-          <button className="btnSecondary" onClick={() => navigate("/exams")}>
+          <button className="btn" onClick={() => navigate("/exams")}>
             Шалгалт өгөх
           </button>
 
@@ -59,7 +60,7 @@ export default function StudentDashboard() {
             Theme
           </button>
 
-          <button className="btn" onClick={logout}>
+          <button className="btnSecondary" onClick={logout}>
             Logout
           </button>
         </div>
@@ -70,17 +71,20 @@ export default function StudentDashboard() {
           <p className="stat-label">Энэ долоо хоногийн хичээл</p>
           <h3 className="stat-value">8</h3>
         </div>
+
         <div className="dashboard-stat-card">
-          <p className="stat-label">Ирэх шалгалт</p>
+          <p className="stat-label">Өгөх шалгалт</p>
           <h3 className="stat-value">3</h3>
         </div>
+
         <div className="dashboard-stat-card">
           <p className="stat-label">Ирц</p>
           <h3 className="stat-value">96%</h3>
         </div>
+
         <div className="dashboard-stat-card">
-          <p className="stat-label">Unread мэдэгдэл</p>
-          <h3 className="stat-value">5</h3>
+          <p className="stat-label">Monitoring status</p>
+          <h3 className="stat-value">Ready</h3>
         </div>
       </div>
 
@@ -101,6 +105,7 @@ export default function StudentDashboard() {
                       {item.time} · {item.room}
                     </p>
                   </div>
+
                   <span className="status-pill">{item.type}</span>
                 </div>
               ))}
@@ -130,6 +135,14 @@ export default function StudentDashboard() {
                 </div>
               ))}
             </div>
+
+            <button
+              className="btn"
+              style={{ marginTop: 16 }}
+              onClick={() => navigate("/exams")}
+            >
+              Шалгалтын жагсаалт руу орох
+            </button>
           </section>
 
           <FaceVerificationCard />
@@ -153,8 +166,8 @@ export default function StudentDashboard() {
 
           <section className="dashboard-panel">
             <div className="panel-head">
-              <h2>Priority checklist</h2>
-              <span>Tasks</span>
+              <h2>Шалгалтын бэлтгэл</h2>
+              <span>Checklist</span>
             </div>
 
             <div className="simple-list">
@@ -173,10 +186,18 @@ export default function StudentDashboard() {
             </div>
 
             <div className="profile-card-lite">
-              <p><strong>Нэр:</strong> {user?.first_name} {user?.last_name}</p>
-              <p><strong>Role:</strong> {user?.role}</p>
-              <p><strong>Identifier:</strong> {user?.identifier}</p>
-              <p><strong>Статус:</strong> Active</p>
+              <p>
+                <strong>Нэр:</strong> {user?.first_name} {user?.last_name}
+              </p>
+              <p>
+                <strong>Role:</strong> {user?.role}
+              </p>
+              <p>
+                <strong>Identifier:</strong> {user?.identifier}
+              </p>
+              <p>
+                <strong>Статус:</strong> Active
+              </p>
             </div>
           </section>
         </div>
